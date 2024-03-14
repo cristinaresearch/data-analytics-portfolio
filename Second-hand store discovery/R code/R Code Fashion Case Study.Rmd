@@ -1,0 +1,1094 @@
+---
+title: "Second-Hand Fashion Case Study"
+author: "Cristina"
+date: "2024-03-13"
+output: html_document
+---
+
+# 0. Preparing the data
+
+```{r libraries}
+
+## Data cleaning
+library(readxl) #reading files 
+library(tidyverse) #cleaning data, modeling and visualizing 
+library(stringr) #manipulate strings 
+library(data.table) #data manipulation
+library(mltools) #onehotencoding
+
+## Data analysis 
+library(AMR) #split numerical groups
+library(likert) # visualize likert responses 
+library(scales)
+
+# Exploratory data analysis libraries 
+pacman::p_load(
+  rio,          # File import
+  here,         # File locator
+  skimr,        # get overview of data
+  gtsummary,    # summary statistics and tests
+  rstatix,      # summary statistics and statistical tests
+  janitor,      # adding totals and percents to tables
+  scales,       # easily convert proportions to percents  
+  flextable     # converting tables to pretty images
+)
+
+## PCA Analysis 
+library(factoextra) #pca 
+library(corrr)
+library(ggcorrplot)
+library(FactoMineR)  
+library(corrplot) # visualize the cos2 of variables on all the dimensions
+
+```
+
+
+### Web scraping and merge 
+
+For the Web Scrapping technique used to collect Italy regions geopolitical data (eg. km2, population size...) from Wikipedia and the merge with the survey data with please visit the 'Web Scrapping Italy regions' notebook. 
+
+```{r loading dataset}
+dataset <- read.csv("C:\\Users\\loka_\\Desktop\\GitHub Projects\\Case studies\\Fashion sustainability\\Data\\dataset.csv")
+dataset <- select(dataset, -X) 
+```
+
+# 1. Cleaning the data 
+
+### Rename columns
+```{r}
+# Change the column name from "female" to "gender" 
+dataset <- rename(dataset, c(gender = "female"))
+
+glimpse(dataset)
+```
+
+### Remove outliers
+```{r}
+# Using BoxPlot to detect the presence of outliers in the continuos variable and understand how data is distributed:
+boxplot(dataset[,c('wtp_new','wtp_second','wtp_bio','wtp_recycle','wtp_workers')])
+```
+
+### Manage NAs and missing values 
+```{r}
+# Checking NA rows 
+dataset %>% filter(is.na(wtp_new)) 
+dataset %>% filter(is.na(wtp_second))
+dataset %>% filter(is.na(wtp_bio))
+dataset %>% filter(is.na(wtp_recycle))
+dataset %>% filter(is.na(wtp_workers)) 
+```
+
+```{r}
+# Reassign NA value to "Prefer not to say" 
+dataset <- dataset %>%
+  mutate(gender = case_when( # option 1. case_when()
+    gender == "Male"  ~ "Male",
+    gender == "Female" ~ "Female",
+    .default = "Prefer not to say"
+  ))  %>%
+  mutate(income = str_replace(income, "Preferisco non rispondere", ""), #option 2. str_replace()
+         income = str_replace(income, "più di 100000€",">100000€")) %>%
+  mutate(region = str_replace(region, "Non risiedo in Italia", ""))
+```
+
+### Formatting ordinal variables 
+
+Some numeric and character columns are factors, we are going to record it as such, to facilitate further analysis. We use [this guide](https://r4ds.had.co.nz/factors.html). We are using the library forcats(), included in tidyverse framework. Forcats() is specialized in working with factors. 
+
+```{r Create lists with factor levels}
+# Socioeconomical levels
+education_levels <- c(
+  "Primary school", "Middle school", "Secondary school", "Postsecondary education", "PhD"
+  )
+
+income_levels <- c(
+  "0-15000€", "15000€-30000€", "30000€-45000€", "45000€-60000€", "60000€-75000€", "75000€-100000€", ">100000€"
+  )
+
+# Likert levels
+importance <- c("Not al all" , "Slightly", "Moderately" , "Important" ,"Very important")
+
+agree_levels <- c("Strongly disagree", "Disagree", "Undecided", "Agree", "Strongly agree")
+
+frequency_levels <- c("Never", "Rarely", "Sometines", "Often", "Always")
+
+wtp_levels <- c("Nothing", "Little amount", "Pay enough", "Large amount")
+
+# Dicotomical levels 
+yesno <- c("1", "0")
+
+```
+
+```{r}
+# Convert variable to factor with the previous levels
+
+## Sociodemographic levels
+dataset <- dataset %>%
+  mutate(education = factor(education, levels = education_levels),
+         income = factor(income, levels = income_levels)
+         ) 
+
+## Likert levels 
+dataset <- dataset %>%
+  mutate(i_clothes_fashion = factor(i_clothes_fashion, levels = importance),
+         i_clothes_versatile = factor(i_clothes_versatile, levels = importance),
+         i_clothes_need = factor(i_clothes_need, levels = importance),
+         i_clothes_size = factor(i_clothes_size, levels = importance),
+         i_clothes_fit = factor(i_clothes_fit, levels = importance),
+         i_clothes_easy = factor(i_clothes_easy, levels = importance),
+         i_clothes_quality = factor(i_clothes_quality, levels = importance),
+         i_clothes_cheap = factor(i_clothes_cheap, levels = importance),
+         i_clothes_value = factor(i_clothes_value, levels = importance),
+         i_clothes_know = factor(i_clothes_know, levels = importance),
+         i_clothes_prestigious = factor(i_clothes_prestigious, levels = importance),
+         i_clothes_environment = factor(i_clothes_environment, levels = importance)
+  )
+
+dataset <- dataset %>%
+  mutate(second_precovid = factor(second_precovid, levels = frequency_levels),
+         second_covid = factor(second_covid, levels = frequency_levels),
+         second_postcovid = factor(second_postcovid, levels = frequency_levels),
+         bio_postcovid = factor(bio_postcovid, levels = frequency_levels),
+         bioc_covid = factor(bioc_covid, levels = frequency_levels),
+         bio_precovid = factor(bio_precovid, levels = frequency_levels),
+         pro_recycle = factor(pro_recycle, levels = frequency_levels),
+         pro_label = factor(pro_label, levels = frequency_levels),
+         pro_brown_firms = factor(pro_brown_firms, levels = frequency_levels),
+         pro_packaging = factor(pro_packaging, levels = frequency_levels),
+         pro_pub_transport = factor(pro_pub_transport, levels = frequency_levels),
+         pro_quality_clothes = factor(pro_quality_clothes, levels = frequency_levels),
+         pro_pack_reuse = factor(pro_pack_reuse, levels = frequency_levels),
+         pro_donation = factor(pro_donation, levels = frequency_levels),
+         pro_reuse = factor(pro_reuse, levels = frequency_levels),
+         pro_second_clothes = factor(pro_second_clothes, levels = frequency_levels),
+        pro_label_clothes = factor(pro_label_clothes, levels = frequency_levels),
+        pro_temp_clothes = factor(pro_temp_clothes, levels = frequency_levels),
+        pro_bio1_clothes = factor(pro_bio1_clothes, levels = frequency_levels),
+        pro_bio2_clothes = factor(pro_bio2_clothes, levels = frequency_levels),
+         ) 
+
+dataset <- dataset %>%
+  mutate(no_second_app = factor(no_second_app, levels = importance),
+         no_second_quality = factor(no_second_quality, levels = importance),
+         no_second_shop = factor(no_second_shop, levels = importance),
+         no_second_environment = factor(no_second_environment, levels = importance),
+         no_second_clean = factor(no_second_clean, levels = importance),
+         no_second_size = factor(no_second_size, levels = importance),
+         no_second_fashion = factor(no_second_fashion, levels = importance),
+         bio_eco = factor(bio_eco, levels = importance),
+         bio_vintage = factor(bio_vintage, levels = importance),
+         bio_quality = factor(bio_quality, levels = importance),
+         bio_pollution = factor(bio_pollution, levels = importance),
+         bio_peer = factor(bio_peer, levels = importance),
+         no_bio_app = factor(no_bio_app, levels = importance),
+         no_bio_expensive = factor(no_bio_expensive, levels = importance),
+         no_bio_shop = factor(no_bio_shop, levels = importance),
+         no_bio_environment = factor(no_bio_environment, levels = importance),
+         no_bio_rare= factor(no_bio_rare, levels = importance),
+         no_bio_style = factor(no_bio_style, levels = importance),
+         no_bio_fashion = factor(no_bio_fashion, levels = importance),
+         no_bio_quality = factor(no_bio_quality, levels = importance),
+         second_eco = factor(second_eco, levels = importance), 
+         second_vintage= factor(second_vintage, levels = importance),
+         second_quality = factor(second_quality, levels = importance),
+         second_endlife = factor(second_endlife, levels = importance),
+         second_peer = factor(second_peer, levels = importance),
+         second_pollution = factor(second_pollution, levels = importance))
+
+dataset <- dataset %>%
+  mutate(poll_biodegradable = factor(poll_biodegradable, levels = agree_levels),
+         poll_water = factor(poll_water, levels = agree_levels),
+         poll_dye = factor(poll_dye, levels = agree_levels),
+         poll_chemical_nat = factor(poll_chemical_nat, levels = agree_levels),
+         poll_chemical_synt = factor(poll_chemical_synt, levels = agree_levels))
+
+dataset <- dataset %>%
+  mutate(wtp_cert_quality = factor(wtp_cert_quality, levels = wtp_levels),
+         wtp_cert_bio = factor(wtp_cert_bio, levels = wtp_levels),
+         wtp_cert_recycle = factor(wtp_cert_recycle, levels = wtp_levels),
+         wtp_cert_workers_env = factor(wtp_cert_workers_env, levels = wtp_levels),
+         wtp_cert_workers = factor(wtp_cert_workers, levels = wtp_levels))
+
+## Dicotomical levels
+# Step 1. One hot encoding. I will use the one_hot() function. In order for one_hot to work, I need to convert the variable as factor and the table as a data.table. 
+dataset <- dataset %>% 
+  mutate(second_stuff_dummy = ifelse(second_stuff_dummy=='Yes', 1, 0),
+         bio_item_dummy = ifelse(bio_item_dummy=='Yes', 1, 0),
+         second_clothes_dummy = ifelse(second_clothes_dummy=='Yes', 1, 0),
+         bio_clothes_dummy = ifelse(bio_clothes_dummy=='Yes', 1, 0)
+         )
+
+# Step 2. Convert columns to factors 
+dataset <- dataset %>%
+  mutate(second_stuff_dummy = factor(second_stuff_dummy, levels = yesno),
+  bio_item_dummy = factor(bio_item_dummy, levels = yesno),
+  second_clothes_dummy = factor(second_clothes_dummy, levels = yesno),
+  bio_clothes_dummy = factor(bio_clothes_dummy, levels = yesno)
+  )
+
+
+```
+
+### Trim spaces and format columns
+
+```{r}
+# Clean km2 
+dataset <- dataset %>%
+  # Trim km2 white spaces
+  mutate(km2 = str_squish(km2)) %>%
+  # Trim "," 
+  mutate(km2 = (str_replace_all(km2, ",", ""))) %>%
+  # Convert to numeric
+  mutate(km2 = as.numeric(km2))
+```
+
+
+# 2. Data analysis 
+
+## Approach 
+
+I am going to analyse the data answering to the key business questions:
+- Customers characterization
+- Understand their behaviours and attitudes towards sustainability and second-hand clothing
+- Identify opportunities for customer segments: prioritize 
+To answer each of the questions, I will use different variables of my dataset. 
+
+## Exploratory analysis and visualization
+
+In order to answer to this question, I will analyse demographic and pro-environmental data, that will help me to create a snapshot of customers. 
+
+I will use: 
+- Demographic variables: region, gender, age, people_living, education, income.
+- Pro-environmental variables: pro-...  
+
+```{r}
+survey <- dataset
+```
+
+```{r Gender}
+ggplot(data = survey, aes(x = gender, y = ..prop.., group = 1, label = scales::percent(prop.table(after_stat(prop)))), stat = "count") + 
+  geom_bar(position = 'dodge') + # select plot type
+  geom_text(stat = 'count',
+            position = position_dodge(.9), 
+            vjust = -0.5, 
+            size = 3) +
+  scale_y_continuous(labels = scales::percent_format(), limits=c(0,1)) + #customize y axis
+  ggtitle("Gender distribution") + #add title 
+  labs(x = NULL) +  # remove x axis label
+  labs(y = "Proportion %") # label y axis
+```
+```{r Age}
+# Age histogram
+age_histogram <- ggplot(data = survey, aes(x = age, fill = gender)) +
+  geom_histogram(binwidth = 2, position = "stack")
+
+# Calculate the mean age 
+mean_age <- mean(survey$age)
+
+# Plot the histogram  
+s_back <- select(survey, -gender)
+
+ggplot(data = survey, aes(x = age, fill = gender)) +
+  geom_histogram(data = s_back, binwidth = 2, position = "stack", fill = "grey") +
+  geom_histogram(binwidth = 2, position = "stack") + 
+  facet_wrap(~ gender) +
+  theme_classic()
+```
+
+```{r}
+# Levels of education
+ggplot(data = survey, aes(x=factor(education, level=c('Primary school', 'Middle school', 'Secondary school', 'Postsecondary education', 'PhD')), y = ..prop.., group = 1, label = scales::percent(prop.table(after_stat(count))))) + 
+  geom_bar(stat = "count", position = 'dodge', fill="#75bf89") + # select plot type
+  geom_text(stat = 'count',
+            aes(label = scales::percent(prop.table(after_stat(count)))),
+            position = position_dodge(width = 0.9), 
+            vjust = -0.5, 
+            size = 3) +
+  scale_y_continuous(labels = scales::percent_format(), limits=c(0,1)) + #customize y axis
+  ggtitle("Education levels") + #add title 
+  labs(y = "Percentage", x = NULL) +
+  xlab('education') +
+  theme_classic()
+
+```
+
+```{r}
+# People living in the household 
+ggplot(data = survey, aes(x = people_living, y = ..prop.., group = 1, label = scales::percent(prop.table(after_stat(count))))) + 
+  geom_bar(stat = "count", position = 'dodge',fill="#75bf89") + # select plot type
+  geom_text(stat = 'count',
+            aes(label = scales::percent(prop.table(after_stat(count)))),
+            position = position_dodge(width = 0.9), 
+            vjust = -0.5, 
+            size = 3) +
+  scale_y_continuous(labels = scales::percent_format(), limits=c(0,1)) + #customize y axis
+  ggtitle("Number of people living with") + #add title 
+  labs(y = "Percentage", x = NULL) + 
+  theme_classic()
+```
+
+```{r}
+# Regions
+regionplot <- survey %>% filter(region != (""))
+
+loctib <- regionplot %>%  
+  group_by(region, political_wing) %>%
+  count() %>%
+  arrange(desc(n))  
+ 
+loctib$n_perc = round(100 * loctib$n / sum(loctib$n),2) 
+loctib
+
+```
+```{r}
+ggplot(loctib, aes(x = n, y = reorder(region, n),fill = political_wing)) +
+  ## draw bars
+  geom_col() +
+  geom_text(aes(label = n),
+  hjust = 1, nudge_x = -.5) +
+  ylab('region') +
+  ## change plot appearance
+  theme_classic()
+```
+
+```{r}
+# Plot income 
+ggplot(survey, aes(y = income)) +
+  geom_bar(fill="#75bf89") +
+  ylab('income') +
+  theme_classic()
+```
+ 
+```{r Create groups to categorize users}
+# add variables to the dataset that will help me to categorize users (same ones that I added to the pca dataset)
+dataset <- dataset %>%
+  mutate(generation = age_groups(age, c(25,30,45)),
+         household = age_groups(people_living, c(1,2,4)),
+         population_2023 = as.numeric(population_2023),
+         locationsize = age_groups(population_2023, c(150000,450000,900000))
+) 
+```
+
+```{r}
+## get information about each variable in a dataset 
+skim(dataset)  
+```
+```{r}
+dataset %>% 
+  get_summary_stats(
+    age, people_living,  # columns to calculate for
+    type = "common")                    # summary stats to return
+```
+ 
+```{r}
+dataset %>%               # case linelist
+  tabyl(generation) %>%   # tabulate counts and proportions by age category
+  adorn_pct_formatting()  # convert proportions to percents
+```
+
+Cross-tabs:
+
+```{r}
+dataset %>% 
+  tabyl(generation, gender) %>%                # counts by age and gender
+  adorn_totals(where = "row") %>%             # add total row
+  adorn_percentages(denominator = "row") %>%  # convert counts to proportions
+  adorn_pct_formatting(digits = 1)            # convert proportions to percents
+```
+
+```{r}
+dataset %>% 
+  tabyl(education, gender) %>%                # counts by age and gender
+  adorn_totals(where = "row") %>%             # add total row
+  adorn_percentages(denominator = "row") %>%  # convert counts to proportions
+  adorn_pct_formatting(digits = 1)            # convert proportions to percents
+```
+
+
+
+```{r}
+dataset %>%
+  tabyl(generation, household) %>%
+  adorn_totals(where = "row") %>%             # add total row
+  adorn_percentages(denominator = "row") %>%  # convert counts to proportions
+  adorn_pct_formatting(digits = 1)            # convert proportions to percents
+```
+
+## Likert questions
+ 
+```{r shopping clothes attitudes}
+ 
+clothes <- select(dataset, i_clothes_versatile, i_clothes_need, i_clothes_size, i_clothes_fit, i_clothes_easy, i_clothes_quality, i_clothes_cheap, i_clothes_value, i_clothes_know, i_clothes_prestigious, i_clothes_environment)
+ 
+# Column names
+clothes <- rename(clothes, c("is produced in an environmentally respectful manner" = "i_clothes_environment"))
+clothes <- rename(clothes, c("is from a prestigious brand" = "i_clothes_prestigious"))
+clothes <- rename(clothes, c("has a good value for money" = "i_clothes_value"))
+clothes <- rename(clothes, c("is easy to care for" = "i_clothes_easy"))
+clothes <- rename(clothes, c("is inexpensive" = "i_clothes_cheap"))
+clothes <- rename(clothes, c("is available in your size" = "i_clothes_size"))
+clothes <- rename(clothes, c("is something that you need" = "i_clothes_need"))
+clothes <- rename(clothes, c("is versatile" = "i_clothes_versatile"))
+clothes <- rename(clothes, c("is good quality" = "i_clothes_quality"))
+clothes <- rename(clothes, c("is comfortable" = "i_clothes_fit"))
+clothes <- rename(clothes, c("is from a well-known brand" = "i_clothes_know"))
+
+
+
+sust_fashion <- select(dataset, sustainable_fashion_item1,sustainable_fashion_item2,sustainable_fashion_item3,sustainable_fashion_item4)
+ 
+```
+
+
+```{r}
+# generate plot
+plot(likert(clothes), ordered = T , wrap= 60)
+```
+
+
+```{r}
+# visualizing
+ggplot(dataset, aes(x = sustainable_fashion_item1)) + 
+  geom_density(fill="#75bf89", alpha = .2, colour="#75bf89") +
+  labs(x = "Second-hand clothes") +
+  theme_classic()
+
+ggplot(sust_fashion, aes(x = sustainable_fashion_item2)) + 
+  geom_density(fill="#75bf89", alpha = .2, colour="#75bf89") +
+  labs(x = "Bio-based clothes") +
+  theme_classic()
+
+ggplot(sust_fashion, aes(x = sustainable_fashion_item3)) + 
+  geom_density(fill="#75bf89", alpha = .2, colour="#75bf89") +
+  labs(x = "Clothes produced respecting workers conditions (e.g., no child work)") +
+  theme_classic()
+
+ggplot(sust_fashion, aes(x = sustainable_fashion_item4)) + 
+  geom_density(fill="#75bf89", alpha = .2, colour="#75bf89") +
+  labs(x = "Clothes produced respecting workers conditions and biofibers") +
+  theme_classic()
+ 
+```
+
+
+```{r}
+ 
+# Create tables to plot Likert 
+second_buy <- select(survey,second_eco,second_vintage,second_quality,second_endlife,second_pollution,second_peer)
+
+no_second_buy <- select(survey, no_second_app, no_second_quality, no_second_shop, no_second_environment, no_second_clean, no_second_size, no_second_fashion)
+
+# Rename columns to friendly terms for the plot 
+second_buy <- rename(second_buy, 
+                       c("Economic reasons" = "second_eco"), 
+                       c("Find exclusive items" = "second_vintage"), 
+                       c("Quality of the product" = "second_quality"), 
+                       c("Use garments that have not yet finished their life cycle" = "second_endlife"), 
+                       c("Reduce pollution related to production of new clothes" = "second_pollution"), 
+                       c("My peers bought similar clothes" = "second_peer"))
+
+
+no_second_buy <- rename(no_second_buy, 
+                       c("Poor availability of dedicated applications" = "no_second_app"), 
+                       c("Poor quality" = "no_second_quality"), 
+                       c("Poor availability of dedicated shops" = "no_second_shop"), 
+                       c("Poor impact on the environmental protection" = "no_second_environment"), 
+                       c("Poor hygiene" = "no_second_clean"), 
+                       c("It is difficult to find the proper size" = "no_second_size"), 
+                       c("It is difficult to find trendy clothes" = "no_second_fashion")
+)
+ 
+# generate plot
+plot(likert(second_buy), ordered = T , wrap= 60)
+
+
+# generate plot
+plot(likert(no_second_buy), ordered = T , wrap= 60)
+```
+
+ 
+```{r}
+
+# Percentages table
+perc_beh <- survey %>%
+  summarize(second_buy_perc = round(mean(as.numeric(second_stuff_dummy == 1)) * 100, 2),
+            second_buy_clothes_perc = round(mean(as.numeric(second_clothes_dummy == 1)) * 100,2)
+            )
+
+
+# Create dataframes to visualize in donut chart 
+sclothes <- survey %>% 
+  group_by(second_clothes_dummy) %>%
+  count() %>%
+  mutate(second_clothes_dummy = case_when(
+    second_clothes_dummy == 1 ~ "Yes",
+    second_clothes_dummy == 0 ~ "No",
+    .default = "NA"
+          )
+         )
+
+sstuff <- survey %>% 
+  group_by(second_stuff_dummy) %>%
+  count() %>%
+  mutate(second_stuff_dummy = case_when(
+    second_stuff_dummy == 1 ~ "Yes",
+    second_stuff_dummy == 0 ~ "No",
+    .default = "NA"
+          )
+         )
+
+# Compute percentages
+sstuff$fraction = sstuff$n / sum(sstuff$n)
+sclothes$fraction = sclothes$n / sum(sclothes$n)
+
+# Compute the cumulative percentages (top of each rectangle)
+sstuff$ymax = cumsum(sstuff$fraction)
+sclothes$ymax = cumsum(sclothes$fraction)
+
+# Compute the bottom of each rectangle
+sstuff$ymin = c(0, head(sstuff$ymax, n=-1))
+sclothes$ymin = c(0, head(sclothes$ymax, n=-1))
+ 
+# Make the plots
+ggplot(sstuff, aes(ymax=ymax, ymin=ymin, xmax=4, xmin=3, fill=second_stuff_dummy)) +
+     geom_rect() +
+     coord_polar(theta="y") + # Try to remove that to understand how the chart is built initially
+     xlim(c(2, 4)) + # Try to remove that to see how to make a pie chart 
+  theme_void()  
+
+
+ggplot(sclothes, aes(ymax=ymax, ymin=ymin, xmax=4, xmin=3, fill=second_clothes_dummy)) +
+     geom_rect() + 
+     coord_polar(theta="y") + # Try to remove that to understand how the chart is built initially
+     xlim(c(2, 4)) +  # Try to remove that to see how to make a pie chart 
+  theme_void()
+
+```
+
+# 2. What are the key behaviours and attitudes related to sustainability and second-hand clothing?
+
+### Step 1. Evaluate the data and prioritize variables to use
+
+From a business perspective, I will prioritize variables that have to to with the preference when buying clothes, and sustainable attitudes and behaviours. 
+ 
+```{r Create dataframe for factor analysis }
+###### Clean DATASET from NAs, maintaining all the variables for later use
+dfexplo <- dataset 
+
+# Delete NAs rows
+# Count # missing in each column
+missings <- colSums(is.na(dfexplo))
+
+# Keep all columns with less than 20 missings
+dfexplo <- dfexplo[ , missings<20]
+
+# Omit all NA rows
+dfexplo <- na.omit(dfexplo) # Remove rows with missing values
+
+# Remove WTP outliers:interquartile method 
+# boxplot
+boxplot(dfexplo[,c('wtp_new','wtp_second','wtp_bio','wtp_recycle','wtp_workers')])
+
+###
+# wtp_new
+Q1 <- quantile(dfexplo$wtp_new, .25)
+Q3 <- quantile(dfexplo$wtp_new, .75)
+IQR <- IQR(dfexplo$wtp_new)
+ 
+#only keep rows in dataframe that have values within 1.5*IQR of Q1 and Q3
+dfexplo <- subset(dfexplo, dfexplo$wtp_new> (Q1 - 1.5*IQR) & dfexplo$wtp_new< (Q3 + 1.5*IQR))
+
+###
+# wtp_second
+
+Q1 <- quantile(dfexplo$wtp_second, .25)
+Q3 <- quantile(dfexplo$wtp_second, .75)
+IQR <- IQR(dfexplo$wtp_second)
+
+#only keep rows in dataframe that have values within 1.5*IQR of Q1 and Q3
+dfexplo <- subset(dfexplo, dfexplo$wtp_second> (Q1 - 1.5*IQR) & dfexplo$wtp_second< (Q3 + 1.5*IQR))
+
+###
+# wtp_bio
+
+Q1 <- quantile(dfexplo$wtp_bio, .25)
+Q3 <- quantile(dfexplo$wtp_bio, .75)
+IQR <- IQR(dfexplo$wtp_bio)
+
+#only keep rows in dataframe that have values within 1.5*IQR of Q1 and Q3
+dfexplo <- subset(dfexplo, dfexplo$wtp_bio> (Q1 - 1.5*IQR) & dfexplo$wtp_bio< (Q3 + 1.5*IQR))
+
+###
+# wtp_recycle
+
+Q1 <- quantile(dfexplo$wtp_recycle, .25)
+Q3 <- quantile(dfexplo$wtp_recycle, .75)
+IQR <- IQR(dfexplo$wtp_recycle)
+
+#only keep rows in dataframe that have values within 1.5*IQR of Q1 and Q3
+dfexplo <- subset(dfexplo, dfexplo$wtp_recycle> (Q1 - 1.5*IQR) & dfexplo$wtp_recycle< (Q3 + 1.5*IQR))
+
+
+###
+# wtp_workers
+
+Q1 <- quantile(dfexplo$wtp_workers, .25)
+Q3 <- quantile(dfexplo$wtp_workers, .75)
+IQR <- IQR(dfexplo$wtp_workers)
+
+#only keep rows in dataframe that have values within 1.5*IQR of Q1 and Q3
+dfexplo <- subset(dfexplo, dfexplo$wtp_workers> (Q1 - 1.5*IQR) & dfexplo$wtp_workers< (Q3 + 1.5*IQR))
+
+# boxplot
+boxplot(dfexplo[,c('wtp_new','wtp_second','wtp_bio','wtp_recycle','wtp_workers')])
+
+```
+
+
+```{r Create dataframe for factor analysis }
+###### Prepare PCA DATASET
+
+# remove variables that are not important for my analysis, categorical variables or factors that I won't use
+dfexplo_pca <- select(dfexplo, -uid, -region, -people_living, -education, -gender, -age, -location, -status, -population_2023, -km2, -pop_density_p_km2, -HDI_2022, -capital, -political_party, -political_wing, -president_2024, -n_comunes, -n_provinces, -sustainable_sector, -sustainable_phases, -poll_chemical_synt, -poll_chemical_nat, -poll_dye, -poll_water, -poll_biodegradable)
+
+#PCA only works with numerical values, so we will convert factors into numeric 
+# Check factor numeric levels correspond to the semantic meaning
+  #unclass(dfexplo$i_clothes_size) 
+dfexplo_pca <- dfexplo_pca %>%
+   mutate_if(is.factor, as.numeric)
+ 
+```
+
+```{r Store groups for analysis later}  
+dfexplo <- dfexplo %>%
+  mutate(generation = age_groups(age, c(25,30,45)))
+
+dfexplo <- dfexplo %>%
+  mutate(household = age_groups(people_living, c(1,2,4)))
+
+dfexplo <- dfexplo %>%
+  mutate(population_2023 = as.numeric(population_2023))
+
+dfexplo <- dfexplo %>%
+  mutate(locationsize = age_groups(population_2023, c(150000,450000,900000)))
+```
+
+```{r Create groups to categorize users}
+ggender <- as.factor(dfexplo$gender)
+
+ggage <- as.factor(dfexplo$generation)
+  
+geducation <- dfexplo$education
+  
+gliving <- as.factor(dfexplo$household)
+  
+glocation <- as.factor(dfexplo$location)
+
+gwing <- as.factor(dfexplo$political_wing)
+
+glocationsize <- as.factor(dfexplo$locationsize)
+```
+
+
+### Step 2. Data normalization
+
+Goal: ensures that each attribute has the same level of contribution, preventing one variable from dominating others. For each variable, normalization is done by subtracting its mean and dividing by its standard deviation.   
+
+```{r Normalization of the data}
+# Scale numerical data
+data_normalized <- scale(dfexplo_pca)
+
+# Converting list to data frame
+data_normalized <- as.data.frame(data_normalized)
+
+# Checking if normalization worked  
+#data_normalized %>% 
+ # summarise(across(1:32, var))
+```
+
+### Step 3. Compute correlation matrix
+
+```{r Correlation matrix}
+corr_matrix <- cor(data_normalized)
+ggcorrplot(corr_matrix)
+```
+
+
+The first two components can be considered to be the most significant since they contain almost 80% of the total information of the data.
+
+### Step 4. PCA: Visualization
+
+With the biplot, it is possible to visualize the similarities and dissimilarities between the samples, and further shows the impact of each attribute on each of the principal components.
+
+
+```{r Biplot}
+a = princomp(data_normalized)
+fviz_pca_biplot(a)
+```
+ 
+```{r PCA}
+
+results.pca <- PCA(data_normalized, graph = FALSE) # it normalized the data automatically
+
+```
+
+```{r Eigenvalues and variances}
+eig.val <- get_eigenvalue(results.pca) 
+eig.val
+```
+
+```{r Screeplot}
+fviz_eig(results.pca, addlabels = TRUE, ylim = c(0, 50))
+```
+
+In our analysis, the first five principal components explain 50% of the variation. 
+
+
+### Step 5. PCA: Interpretation
+
+A simple method to extract the results, for variables, from a PCA output is to use the function get_pca_var() [factoextra package]. This function provides a list of matrices containing all the results for the active variables (coordinates, correlation between variables and axes, squared cosine and contributions)
+
+```{r pca var}
+var <- get_pca_var(results.pca)
+var
+```
+
+```{r}
+var$contrib
+```
+ 
+```{r}
+corrplot(t(var$cos2), is.corr=FALSE)
+```
+The cos2 values are used to estimate the quality of the representation
+
+The closer a variable is to the circle of correlations, the better its representation on the factor map (and the more important it is to interpret these components)
+
+Variables that are closed to the center of the plot are less important for the first components.
+
+```{r Correlation circle}
+
+fviz_pca_var(results.pca, col.var = "cos2",
+            gradient.cols = c("black", "orange", "green"),
+            repel = TRUE) 
+```
+ 
+```{r loadings}
+p <- princomp(data_normalized) 
+
+# Write a table with the pca loadings (up to 5, the ones that explain most of the variance)
+p_loadings <- as.data.frame(p$loadings[,1:12])
+
+# Store row names as column
+p_loadings_tbl <- rownames_to_column(p_loadings, var = "variable") %>% as_tibble()
+
+library(readr)
+
+# Save file 
+write_csv(p_loadings_tbl, file = "C:\\Users\\loka_\\Desktop\\GitHub Projects\\Case studies\\Fashion sustainability\\Data\\ploadingsnew.csv")
+```
+
+We export and interpret the data using custom colors in spreadsheet.
+Together with the previous plots, we can establish that:
+
+* There are 5 dimensions that explain the 60% of the variability in the data.
+
+* We can distinguish five key components:
+1. Willingness to pay for sustainable clothes (ideal)
+2. Interest in fashion  
+3. Willingness to pay (pragmatic)
+4. Sustainable fashion awareness
+5. Second-hand buyers 
+
+# 3. Customer segmentation
+
+### Step 1. Visualizing PCA dimensions and customers characteristics
+
+We want to divide customers into different groups (segments) according to their characteristics, and understand how the observations from the groups are plotted in the dimensions that we have obtained. 
+
+```{r}
+# Gender groups
+fviz_pca_ind(results.pca,
+             geom.ind = "point", # show points only (nbut not "text")
+             col.ind = ggender, # color by groups
+             palette = c("#00AFBB", "#E7B800", "#FC4E07"),
+             addEllipses = TRUE, # Concentration ellipses
+             legend.title = "Groups"
+             ) 
+
+# Age groups
+fviz_pca_ind(results.pca,
+             geom.ind = "point", # show points only (nbut not "text")
+             col.ind = ggage, # color by groups
+             palette = c("#00AFBB", "#E7B800", "#FC4E07","black","blue","green","purple"),
+             addEllipses = TRUE, # Concentration ellipses
+             legend.title = "Groups"
+             )
+
+# Education groups
+fviz_pca_ind(results.pca,
+             geom.ind = "point", # show points only (nbut not "text")
+             col.ind = geducation, # color by groups
+             palette = c("#00AFBB", "#E7B800", "#FC4E07","black","green","purple"),
+             addEllipses = TRUE, # Concentration ellipses
+             legend.title = "Groups"
+             )
+
+# Living groups
+fviz_pca_ind(results.pca,
+             geom.ind = "point", # show points only (nbut not "text")
+             col.ind = gliving, # color by groups
+             palette = c("#00AFBB", "#E7B800", "#FC4E07","black","purple","green","yellow","grey"),
+             addEllipses = TRUE, # Concentration ellipses
+             legend.title = "Groups"
+             )
+
+# Location groups
+fviz_pca_ind(results.pca,
+             geom.ind = "point", # show points only (nbut not "text")
+             col.ind = glocation, # color by groups
+             palette = c("#00AFBB", "orange", "#FC4E07","blue","yellow","green","purple"),
+             addEllipses = TRUE, # Concentration ellipses
+             legend.title = "Groups"
+             )
+
+# Wing groups
+fviz_pca_ind(results.pca,
+             geom.ind = "point", # show points only (nbut not "text")
+             col.ind = gwing, # color by groups
+             palette = c("#00AFBB", "#E7B800", "#FC4E07","black","pink","green","purple"),
+             addEllipses = TRUE, # Concentration ellipses
+             legend.title = "Groups"
+             )
+
+# Location size
+fviz_pca_ind(results.pca,
+             geom.ind = "point", # show points only (nbut not "text")
+             col.ind = glocationsize, # color by groups
+             palette = c("#00AFBB", "#E7B800", "#FC4E07","black","pink","green","purple"),
+             addEllipses = TRUE, # Concentration ellipses
+             legend.title = "Groups"
+             )
+```
+
+```{r}
+fviz_pca_biplot(results.pca, 
+                col.ind = geducation, palette = "jco", 
+                addEllipses = TRUE, label = "var",
+                col.var = "black", repel = TRUE,
+                legend.title = "Groups") 
+
+
+fviz_pca_biplot(results.pca, 
+                col.ind = ggender, palette = "jco", 
+                addEllipses = TRUE, label = "var",
+                col.var = "black", repel = TRUE,
+                legend.title = "Groups")
+
+
+fviz_pca_biplot(results.pca, 
+                col.ind = gliving, palette = "jco", 
+                addEllipses = TRUE, label = "var",
+                col.var = "black", repel = TRUE,
+                legend.title = "Groups")
+
+fviz_pca_biplot(results.pca, 
+                col.ind = gwing, palette = "jco", 
+                addEllipses = TRUE, label = "var",
+                col.var = "black", repel = TRUE,
+                legend.title = "Groups")
+
+
+fviz_pca_biplot(results.pca, 
+                col.ind = glocation, palette = "jco", 
+                addEllipses = TRUE, label = "var",
+                col.var = "black", repel = TRUE,
+                legend.title = "Groups")
+
+
+fviz_pca_biplot(results.pca, 
+                col.ind = glocationsize, palette = "jco", 
+                addEllipses = TRUE, label = "var",
+                col.var = "black", repel = TRUE,
+                legend.title = "Groups")
+```
+
+
+```{r} 
+# Extract individual coordinates of the observations for each of the dimensions in the PCA
+ind2 <- get_pca_ind(results.pca)
+head(ind2$coord)
+
+# Merge original dataframe with the individual coordinates
+dftotal <- merge(dfexplo, ind2$coord, by = 'row.names')
+
+# Converting list to data frame
+dftotal <- as.data.frame(dftotal)
+
+```
+
+### Step 2. K-Means clustering 
+
+Now that we have an idea of the principal components and some insights about how users could perform in these attitudinal and behavioral dimensions, we will perform a K - Means clustering using the reduced dataset along with some sociodemographic variables. 
+ 
+```{r Preparing dataset for K-Means}
+# Select the variables that we want to include in our clustering
+kmeansdf <- select(dftotal, 
+                   gender,
+                   location, 
+                   political_wing, 
+                   education, 
+                   people_living, 
+                   population_2023, 
+                   age, 
+                   Dim.1, 
+                   Dim.2, 
+                   Dim.3, 
+                   Dim.4, 
+                   Dim.5) %>%
+            mutate(location = factor(location, levels = c("south","north-east","centre","north-west","islands")),
+                   political_wing = factor(political_wing, levels = c("right", "left")),
+                   gender = factor(gender, levels = c("Male", "Female", "Prefer not to say"))
+                   )
+ 
+# Filter out gender: "Prefer not to say", as is missing value
+kmeansdf <- kmeansdf %>% filter(gender != "Prefer not to say")
+
+# Update column names to better reflect the variables
+
+names(kmeansdf)[8] <- "WTP_status"
+names(kmeansdf)[9] <- "fashion_care"
+names(kmeansdf)[10] <- "WTP_conscious"
+names(kmeansdf)[11] <- "sust_awareness"
+names(kmeansdf)[12] <- "second_hand_behaviour"
+ 
+# Convert categorical data to one-hot columns, as K-means is sensitive to distances. I don't convert the ones that are ordered with meaning (ex. education levels)
+k <- mltools::one_hot(data.table::as.data.table(kmeansdf), cols = c("gender","location","political_wing"))
+
+# Delete column: "gender prefer not to say" 
+k <- select(k, -3) 
+
+# Convert factors to numeric variables 
+ 
+kmeansdfnum <- k %>% mutate_if(is.factor, as.numeric)
+
+# Normalize variables 
+
+knorm <- scale(kmeansdfnum)
+
+knorm <- as.data.table(knorm)
+ 
+```
+
+```{r Investigating correlations}
+kcor_matrix <- cor(knorm)
+ggcorrplot(kcor_matrix, hc.order = TRUE, type = "upper", outline.col = "white", insig = "blank")
+```
+
+We can finally identify the clusters of listings with k-means.  
+
+```{r}
+set.seed(123)
+km.out <- kmeans(knorm, centers = 3, nstart = 20)
+km.out
+```
+
+```{r} 
+# Visualize the k-means clusters
+fviz_cluster(km.out, data = knorm, geom = "point")
+```
+We try different centers to see what is the best number of clusters:
+
+```{r}
+# 2 groups
+set.seed(123)
+km.out2 <- kmeans(knorm, centers = 2, nstart = 20)
+km.out
+fviz_cluster(km.out2, data = knorm, geom = "point")
+
+# 4 groups
+set.seed(123)
+km.out4 <- kmeans(knorm, centers = 4, nstart = 20)
+km.out
+fviz_cluster(km.out4, data = knorm, geom = "point")
+
+
+# 5 groups 
+set.seed(123)
+km.out5 <- kmeans(knorm, centers = 5, nstart = 20)
+km.out
+fviz_cluster(km.out5, data = knorm, geom = "point")
+
+```
+
+### Step 3. Exploring our segments
+
+```{r}
+km.out4
+```
+```{r}
+# Merging Clusters to original dataset 
+kmeansdf$cluster_id <- factor(km.out4$cluster)
+```
+
+```{r}
+
+kmeansdf %>%
+  group_by(cluster_id) %>%
+  summarize(household_avg = round(mean(people_living),2),
+            age_avg = round(mean(age),2), 
+            population_2023_median = median(population_2023),
+            n_women = sum(gender == "Female"),
+            n_men = sum(gender == "Male"),
+            n_second = sum(education == "Secondary school"),
+            n_postsec = sum(education == "Postsecondary education"),
+            n_phD = sum(education == "PhD"),
+            n_right = sum(political_wing == "right"),
+            n_left = sum(political_wing == "left")
+  )  
+ 
+```
+
+```{r}
+
+kmeansdf %>%
+  group_by(cluster_id) %>%
+  summarize(avg_WTP_status = mean(WTP_status),
+            avg_fashion_care = mean(fashion_care),
+            avg_WTP_conscious = mean(WTP_conscious),
+            avg_sust_awareness = mean(sust_awareness),
+            avg_second_hand_behaviour = mean(second_hand_behaviour))
+
+```
+
+
+```{r} 
+ggplot(kmeansdf, aes(age, location, color = cluster_id)) +
+    geom_count(alpha = 0.7) +
+    facet_wrap(~ cluster_id)
+  theme_classic()
+  
+  ggplot(kmeansdf, aes(age, location, color = gender)) +
+    geom_count(alpha = 0.7) +
+    facet_wrap(~ cluster_id)
+  theme_classic()
+
+
+  ggplot(kmeansdf, aes(age, location, color = gender)) +
+    geom_jitter(alpha = 0.7) +
+    facet_wrap(~ cluster_id)
+  theme_classic()
+
+
+ggplot(kmeansdf, aes(gender, location, color = cluster_id)) +
+    geom_jitter(alpha = 0.7) +
+    facet_wrap(~ gender)
+  theme_classic()
+```
+
+```{r export to continue clusters visualizations in spreadsheets}
+
+write.table(kmeansdf, file = "C:\\Users\\loka_\\Desktop\\GitHub Projects\\Case studies\\Fashion sustainability\\Data\\kmeansdf.csv", sep = ",", quote = FALSE, row.names = F)
+
+```
+

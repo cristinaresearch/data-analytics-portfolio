@@ -1,0 +1,89 @@
+---
+title: "Region_scrapping"
+author: "Cristina"
+date: "2024-02-29"
+output: html_document
+---
+
+# 1. Intro
+
+Our survey respondents belong to different cities and towns in Italy. We want to enrich our analysis by aggregating survey data with external data, using scrapping techniques from Wikipedia, such as: population size, number of fast fashion shops, number of people who buy online, and latitude of the region (North -  South). Then I will merge the scrapped data with survey responses. 
+
+# 2. Loading libraries
+```{r libraries}
+library(rvest)
+library(tidyverse)
+library(ids)
+```
+
+# 3. Loading survey dataset
+```{r}
+dataset <- read.csv("C:\\Users\\loka_\\Desktop\\GitHub Projects\\Case studies\\Fashion sustainability\\Data\\fashionresponses.csv")
+
+# Add UID to rows
+dataset <- dataset %>%
+  mutate(uid = uuid(401)) %>%
+  relocate(uid, .before = everything())
+```
+
+# 4. Exporting region list from dataset
+```{r}
+# Create and export region list table 
+region_list <- dataset %>% distinct(region) %>% arrange(region)
+write.table(region_list, file = "C:\\Users\\loka_\\Desktop\\GitHub Projects\\Case studies\\Fashion sustainability\\Data\\region_list.csv", sep = ",", quote = FALSE, row.names = F)
+```
+
+# 5. Scrap table from Wikipedia
+```{r}
+link <-paste0("https://en.wikipedia.org/wiki/Regions_of_Italy")
+webpage <- read_html(link)
+data <- html_nodes(webpage,".wikitable")
+table<- html_table(data[[1]],header = FALSE)
+
+write.csv(table,"C:\\Users\\loka_\\Desktop\\GitHub Projects\\Case studies\\Fashion sustainability\\Data\\regions_info.csv")
+```
+
+# 6. Import clean scrapped table and merge with survey dataset
+```{r}
+# Load regions table, a table where I have collected more information about each region for the analysis  
+regions_to_merge <- read_xlsx("C:\\Users\\loka_\\Desktop\\GitHub Projects\\Case studies\\Fashion sustainability\\Data\\regions_merge.xlsx")
+
+# I drop the row number 19, which is blank. I select the first 18 rows
+regions_to_merge <- regions_to_merge %>% slice_head(n = 18)
+
+# Left join dataset with region 
+dataset <- dataset %>%
+  merge(regions_to_merge, by='region', all.x=TRUE) 
+
+# Fix blanks in "Veneto", which have not been converted
+dataset <- dataset %>%
+  mutate(location = ifelse(region == "Veneto", "north-east", location),
+         status = ifelse(region == "Veneto", "Ordinary", status),
+         population_2023 = ifelse(region == "Veneto", "4883000", population_2023),
+         km2 = ifelse(region == "Veneto", "18345", km2),
+         pop_density_p_km2 = ifelse(region == "Veneto", "265", pop_density_p_km2),
+         HDI_2022 = ifelse(region == "Veneto", "0.900", HDI_2022),
+         capital = ifelse(region == "Veneto", "Venice", capital),
+         political_party = ifelse(region == "Veneto", "League", political_party),
+         political_wing = ifelse(region == "Veneto", "right", political_wing),
+         political_party = ifelse(region == "Veneto", "League", political_party),
+         president_2024 = ifelse(region == "Veneto", "Luca Zaia", president_2024),
+         n_comunes = ifelse(region == "Veneto", "563", n_comunes),
+         n_provinces = ifelse(region == "Veneto", "7", n_provinces)
+         )
+
+```
+
+# 7. Check dataset columns
+```{r}
+glimpse(dataset)
+```
+
+# 8. Export full dataset
+```{r}
+# Export dataset
+write.csv(dataset,"C:\\Users\\loka_\\Desktop\\GitHub Projects\\Case studies\\Fashion sustainability\\Data\\dataset.csv", row.names = T)
+```
+
+
+
