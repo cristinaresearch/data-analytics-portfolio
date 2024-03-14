@@ -8,7 +8,7 @@ My activities included the scope framing, data wrangling, visualization and insi
 The client and business problem for this showcase are hyphothetical, and have the main goal of illustrating a real approach and analysis of the data.
 <br>
 <br>
-Finally, the survey responses that were used to create this report, were downloaded from an open database. Reference: D'Adamo, I. & Colasante, A. (2022). Survey data to assess consumers’ attitudes towards circular economy and bioeconomy practices: A focus on the fashion industry.
+The survey responses that were used to create this report were downloaded from an open database. Reference: D'Adamo, I. & Colasante, A. (2022). Survey data to assess consumers’ attitudes towards circular economy and bioeconomy practices: A focus on the fashion industry.
 Data in Brief, 43.
 
 ![image](https://github.com/cristinaresearch/data-analytics-portfolio/assets/153135151/5d9a6477-0ebf-447a-958c-57264e7ee896)
